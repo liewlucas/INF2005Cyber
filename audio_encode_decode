@@ -1,0 +1,60 @@
+import wave
+def encode(n):
+    print("\nEncoding Starts..")
+    audio = wave.open(r"C:\Users\rylft\Downloads\dynasty - miia [edit audio].wav", mode="rb")
+    frame_bytes = bytearray(list(audio.readframes(audio.getnframes())))
+    string = "Spiderman is Peter Parker"
+    print(string)
+    string = string + int((len(frame_bytes) - (len(string) * 8 * 8)) / 8) * '#'
+    bitmask = 255 - (2 ** n - 1)  # Calculate the bitmask based on the selected LSBs
+    bits = list(map(int, ''.join([bin(ord(i)).lstrip('0b').rjust(8, '0') for i in string])))
+    for i, bit in enumerate(bits):
+        frame_bytes[i] = (frame_bytes[i] & bitmask) | (bit << (8 - n))  # Use the bitmask to modify the desired LSBs
+    frame_modified = bytes(frame_bytes)
+    for i in range(0, 10):
+        print(frame_bytes[i])
+    newAudio = wave.open('sampleStego.wav', 'wb')
+    newAudio.setparams(audio.getparams())
+    newAudio.writeframes(frame_modified)
+
+    newAudio.close()
+    audio.close()
+    print(" |---->succesfully encoded inside sampleStego.wav")
+
+
+def decode(n):
+    print("\nDecoding Starts..")
+    audio = wave.open('sampleStego.wav', mode='rb')
+    frame_bytes = bytearray(list(audio.readframes(audio.getnframes())))
+    decoded_bits = []
+
+    bitmask = 255 - (2 ** n - 1)  # Calculate the bitmask based on the selected LSBs
+
+    for i in range(len(frame_bytes)):
+        # Extract the LSBs that were used for encoding
+        lsb = frame_bytes[i] & bitmask
+        decoded_bits.append(lsb >> (8 - n))  # Shift the extracted LSBs to the rightmost position
+
+    # Combine the decoded bits into a string
+    decoded_string = ''.join([str(bit) for bit in decoded_bits])
+
+    decoded_message = ""
+
+    # Split the decoded string into 8-bit segments and convert them to characters
+    for i in range(0, len(decoded_string), 8):
+        chunk = decoded_string[i:i+8]
+        if chunk != '########':  # Skip and do not print hash characters
+            try:
+                decoded_message += chr(int(chunk, 2))
+            except ValueError:
+                # Handle invalid binary characters gracefully (e.g., skip them)
+                pass
+
+    print("Decoded Message:", decoded_message)
+
+    audio.close()
+
+
+encode(4)
+decode(4)  # Use the same 'n' value as used during encoding
+
