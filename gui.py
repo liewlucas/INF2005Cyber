@@ -4,9 +4,17 @@ import numpy as np
 from PIL import Image
 import wave
 import tempfile
+import os
+import subprocess
+from subprocess import call,STDOUT
 
 # Allow file types: JPG, MP3, MP4, MOV
-valid_extensions = ["jpg", "jpeg", "mp3", "mp4","mov","png", "wav"]
+valid_extensions = ["jpg", "jpeg", "mp4","png", "wav","gif"]
+
+def natural_sort_key(s):
+    """Key function for natural sorting (sort by numerical order)."""
+    import re
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 # Function to convert data to 8 bit binary format
 def to_bin(data):
@@ -24,9 +32,175 @@ def is_valid_file_extension(file_name, valid_extensions):
     file_extension = file_name.split(".")[-1]
     return file_extension.lower() in valid_extensions
 
+# Extract each image frame from input video and saves as PNG image in tmp directory.
+def frame_extraction(cover_object, output_folder):
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+        print(f"[INFO] Directory '{output_folder}' is created")
+    
+    if cover_object:
+        # Create a temporal file
+        with tempfile.NamedTemporaryFile() as temp_file:
+            # Write the SGY to the temporal file
+            temp_file.write(cover_object.getbuffer())
+            print(cover_object)
+            # Now you can use the temporal file path
+            vidcap = cv2.VideoCapture(temp_file.name)
+    
+    count = 0
+
+    while True:
+        success, image = vidcap.read()
+        if not success:
+            break
+        filename = os.path.join(output_folder, "{:d}.png".format(count))
+        cv2.imwrite(filename, image)
+        print("Saved frame:", filename)  # Print the name of the saved PNG image
+        count += 1
+
+def encode_all_frames(folderpath, inputstring, lsb):
+    # Specify the path to the "tmp" folder
+    folder_path = folderpath  # You can adjust this path as needed
+
+     # Get the directory of the script
+    script_directory = os.path.dirname(__file__)
+
+    # Check if the folder exists
+    if os.path.exists(folder_path):
+
+        # Create a new folder for encoded images in the script's directory
+        encoded_folder = os.path.join(script_directory, "encoded")
+        if not os.path.exists(encoded_folder):
+            os.makedirs(encoded_folder)
+
+
+        # Split the input text into individual characters
+        characters = list(inputstring)
+
+        # List all files in the folder
+        files = os.listdir(folder_path)
+
+        # Filter out unwanted filenames like .DS_store
+        filtered_files = [filename for filename in files if not filename.startswith(".")]
+
+        # Sort the filtered list of filenames by numerical order
+        sorted_files = sorted(filtered_files, key=natural_sort_key)
+
+        # Iterate through the sorted list of filenames and characters
+        for filename, char in zip(sorted_files, characters):
+            imagepath = os.path.join(folder_path, filename)  # Joins the sorted filenames with its full path
+            encoded_imagepath = os.path.join(encoded_folder, f"{filename[:-4]}_e.png")  # New encoded image path with "e" added
+
+            encode_image(imagepath,encoded_imagepath, char , lsb)  # Encode the character and save to the new frame
+            print(f"Encoding.. File: {imagepath}, Character: {char}")
+
+        for filename in sorted_files[len(characters):]:
+            imagepath = os.path.join(folder_path, filename)
+            base_filename, file_extension = os.path.splitext(filename)
+            encoded_imagepath = os.path.join(encoded_folder, f"{base_filename}_e{file_extension}")
+            os.rename(imagepath, encoded_imagepath)
+            print(f"Moving.. File: {imagepath} to {encoded_imagepath}")
+
+        # # Move the remaining frames to the encoded folder
+        # for filename in sorted_files[len(characters):]:
+        #     imagepath = os.path.join(folder_path, filename)
+        #     encoded_imagepath = os.path.join(encoded_folder, filename)
+        #     os.rename(imagepath, encoded_imagepath)
+        #     print(f"Moving.. File: {imagepath} to {encoded_imagepath}")
+
+        print("Encoding and Moving Done!")
+
+
+    else:
+        print("The 'tmp' folder does not exist.")
+
+def split_encodedvideo_to_frames(video_path, output_folder):
+    # Create the output folder if it doesn't exist
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+
+    # Initialize the frame count to 0
+    frame_count = 0
+
+    # Loop through the video frames
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Remove the leading zeros from the frame count
+        frame_count_without_leading_zeros = str(frame_count).lstrip('0')
+
+        # Save the frame as an image in the output folder
+        frame_filename = os.path.join(output_folder, f"{frame_count_without_leading_zeros}.png")
+        print("extracting frame:", frame_filename)
+        cv2.imwrite(frame_filename, frame)
+
+        frame_count += 1
+
+    # Release the video capture object
+    cap.release()
+
+    print(f"Split {frame_count} frames from the video.")
+
+def create_video_from_frames(input_folder, output_filename):
+    # frame_files = os.listdir(input_folder)
+    # frame_files = [f for f in frame_files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))]
+    # frame_files.sort(key=natural_sort_key)
+
+    # command = ['ffmpeg', '-i', input_folder + '/%d_e.png', '-c:v', 'huffyuv', '-crf', '0', output_filename]
+    # subprocess.run(command)
+
+    # # Extract audio from input video
+    # call(["ffmpeg", "-i", name, "-q:a", "0", "-map", "a", "tmp1/audio.mp3", "-y"], stdout=open(os.devnull, "w"), stderr=STDOUT)
+    
+    # # Encode text into image frames
+    # # encode_string(input_string)
+    # call(["ffmpeg", "-i", input_folder + "%d_e.png" , "-vcodec", "png", "tmp1/video.mov", "-y"],stdout=open(os.devnull, "w"), stderr=STDOUT)
+    
+    # # Combine video and audio back together 
+    # call(["ffmpeg", "-i", "tmp1/video.mov", "-i", "tmp1/audio.mp3", "-codec", "copy", output_filename, "-y"],stdout=open(os.devnull, "w"), stderr=STDOUT)
+    # Check if input folder exists
+    if not os.path.exists(input_folder):
+        print(f"Input folder '{input_folder}' does not exist.")
+        return
+    
+    # Find all image files in the input folder and sort them by name
+    image_files = sorted([f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp'))])
+
+    # Check if there are any image files in the folder
+    if not image_files:
+        print(f"No image files found in '{input_folder}'.")
+        return
+
+    # Create a list of image file paths with consecutive numbers
+    image_paths = [os.path.join(input_folder, f) for f in image_files]
+
+    # Construct the ffmpeg command to create an MP4 video
+    command = [
+        "ffmpeg",
+        "-framerate", "60",  # Adjust the framerate as needed
+        "-i", os.path.join(input_folder, "%d_e.png"),  # Input image pattern
+        "-c:v", "libx264",    # Video codec
+        "-pix_fmt", "yuv420p",  # Pixel format
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even width and height
+        "-r", "30",            # Output frame rate (same as input)
+        "-y",                  # Overwrite output file if it exists
+        output_filename        # Output file name
+    ]
+
+    # Execute the ffmpeg command
+    subprocess.run(command)
+
+    print(f"Video '{output_filename}' created successfully.")
+
 # Function to encode data
 def encode_get_input():
     output_object = 'sample copy.png'
+    output_audio = 'sampleStego.wav'
     st.header('Upload an image/audio/video as cover object and a TEXT payload.')
 
     cover_object = st.file_uploader("Upload cover object", type=valid_extensions)
@@ -37,7 +211,7 @@ def encode_get_input():
         if is_valid_file_extension(cover_object.name, valid_extensions):
             st.success(f"File '{cover_object.name}' successfully uploaded!")
         else:
-            st.error("Invalid file type! Please upload a JPG, MP3, or MP4 file.")
+            st.error("Invalid file type! Please upload a JPG, wav, or MP4 file.")
 
     payload_input = st.text_input("Enter payload text:")
     lsb_value = st.slider("No. of LSB Cover Object Bits Selected", min_value=1, max_value=8)
@@ -49,14 +223,20 @@ def encode_get_input():
                 st.header('Input:')
                 if cover_object.type in ['audio/mpeg','audio/x-wav']:
                     st.audio(cover_object, format=cover_object.type)
-                    encode_audio(lsb_value, payload_input, cover_object)
+                    output_audio = encode_audio(lsb_value, payload_input, cover_object)
+                    st.header('Output:')
+                    st.audio(output_audio, format=cover_object.type)
                 elif cover_object.type.startswith('image'):
                     st.image(cover_object, use_column_width=True)
                     encode_image(cover_object, output_object, payload_input, lsb_value)
+                    st.header('Output:')
                     st.image(output_object, use_column_width=True)
                 elif cover_object.type in ['video/QuickTime', 'video/mp4']:
                     st.video(cover_object, format=cover_object.type)
-                st.write(f"Input payload: {payload_input}")
+                    # frame_extraction(cover_object, './tmp')
+                    # encode_all_frames("./tmp",payload_input, lsb_value)
+                    create_video_from_frames("./encoded", "encoded_video1.mp4",)
+                # st.write(f"Input payload: {payload_input}")
                 # print(cover_object) Test code
 
                 
@@ -70,8 +250,12 @@ def encode_get_input():
 
 # Function to encode data into an image
 def encode_image(cover_object, output, secret_data, lsb):
-    file_bytes = np.asarray(bytearray(cover_object.read()), dtype=np.uint8)
-    image = cv2.imdecode(file_bytes, 1)
+    print(type(cover_object))
+    if (type(cover_object) == str):
+        image = cv2.imread(cover_object)
+    else:
+        file_bytes = np.asarray(bytearray(cover_object.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, 1)
     # print(image.shape) Test code
     # Calculate the maximum number of bytes that can be encoded in the image
     n_bytes = (image.shape[0] * image.shape[1] * 3 // 8)*lsb
@@ -247,6 +431,7 @@ def encode_audio(n, payload, cover_object):
         new_audio.writeframes(frame_mod_bytes)
 
     print("Successfully encoded inside sampleStego.wav")
+    return 'sampleStego.wav'
 
 # Function to decode data
 def decode_get_input():
@@ -276,6 +461,8 @@ def decode_get_input():
                     payload_text = decode_image(stego_object, lsb_value)
                 elif stego_object.type in ['video/QuickTime', 'video/mp4']:
                     st.video(stego_object, format=stego_object.type)
+                    frame_extraction(stego_object, './tmp2')
+                    decode_all_frames("./tmp2")
                 st.header('Payload:')
                 st.write(payload_text)
             except Exception as e:
@@ -283,6 +470,50 @@ def decode_get_input():
     else:
         st.warning("Please upload the Stego Object.")
     return stego_object
+
+def decode_all_frames(folderpath):
+    print("Decoding Started")
+
+    decodetextlist = [] #list to store letters that are decoded
+    # Specify the path to the "tmp" folder
+    folder_path = folderpath # You can adjust this path as needed
+
+   # Check if the folder exists
+    if os.path.exists(folder_path):
+            
+        # List all files in the folder
+        files = os.listdir(folder_path)
+        #print(files)
+        
+         # Filter out unwanted filenames like .DS_store
+        filtered_files = [filename for filename in files if not filename.startswith(".")]
+
+        # Sort the filtered list of filenames by numerical order
+        sorted_files = sorted(filtered_files, key=natural_sort_key)
+
+         # Iterate through the sorted list of filenames 
+        for filename in sorted_files:
+            #print(filename)
+            imagepath = os.path.join(folder_path, filename) #joins the sorted filenames with its full path
+            # decodetext = decode_with_opencv(imagepath,8) # encodes the image in the path previously joined
+            # print("Decoding.. File:",imagepath, "Decoded Text: ", decodetext)
+            # decodetextlist.append(decodetext)
+
+            decodetext = decode_image(imagepath, 8)  # Attempt to decode the image
+            
+
+            if decodetext == 0:
+                print("All Encoded Files Decoded")
+                break
+                
+            else:
+                st.write("Decoding.. File:", imagepath, "Decoded Text: ", decodetext)
+                print("Decoding.. File:", imagepath, "Decoded Text: ", decodetext)
+                decodetextlist.append(decodetext)
+                continue
+    
+        full_decoded_message = "".join(decodetextlist)
+        print("Decoding Done! Decoded Text:", full_decoded_message) #show decoded text after all decode has been done for all files, decoded text is the same for all frames 
 
 def decode_image(image_name, lsb):
     lsb = int(lsb)
@@ -292,8 +523,11 @@ def decode_image(image_name, lsb):
     nullt = to_bin("=====")
 
     # Read the image
-    file_bytes = np.asarray(bytearray(image_name.read()), dtype=np.uint8)
-    image = cv2.imdecode(file_bytes, 1)
+    if (type(image_name) == str):
+        image = cv2.imread(image_name)
+    else:
+        file_bytes = np.asarray(bytearray(image_name.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, 1)
     binary_data = ""
     status = 0  # if status = 1 means decode finish
 
@@ -415,17 +649,6 @@ def decode_audio(n, input_audio):
     audio.close()
     return hidden_message[:-5]
 
-def decode_display_output(cover_object, payload):
-    # Display Cover Object Output
-    st.header('Output:')
-    if cover_object.type == 'audio/mpeg':
-        st.audio(cover_object, format='audio/mpeg') 
-    elif cover_object.type.startswith('image'):
-        st.image(cover_object, use_column_width=True)
-    elif cover_object.type in ['video/QuickTime', 'video/mp4']:
-        st.video(cover_object, format=cover_object.type)
-    st.write(f"TEXT Payload: {payload}")
-
 
 def main():
     output = 'output.png'
@@ -436,16 +659,12 @@ def main():
 
     match switch:
         case 'Encode':
-            stego_object = encode_get_input()
-            st.write(f"Encoding......")
-            # if stego_object is not None:
-            #     encode_display_output(stego_object)
+            encode_get_input()
+
             
         case 'Decode':
-            stego_object = decode_get_input()
-            cover_object, payload = None, None # Input stego decode function
-            if cover_object and payload is not None:
-                decode_display_output()
+            decode_get_input()
+
 
 if __name__ == "__main__":
     main()
