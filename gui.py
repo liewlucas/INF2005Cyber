@@ -262,13 +262,17 @@ def encode_image(cover_object, output, secret_data, lsb):
 
     secret_data += "====="  # Add a null terminator
 
-    if len(secret_data) > n_bytes:
+    # Convert the secret data to binary
+    binary_secret_data = to_bin(secret_data)
+
+    # print((len(str(binary_secret_data)))) # Test code
+    # print((n_bytes)) # Test code
+    if len(str(binary_secret_data)) > n_bytes:  
         # Check if there is enough space for encoding
         raise ValueError(
             "[!] Insufficient bytes, need bigger image or less data")
 
-    # Convert the secret data to binary
-    binary_secret_data = to_bin(secret_data)
+    
 
     # this is to add padding to front of data.
     # padding is needed so that it will be able to replace the n lsb nicely (say 3 lsb, left with last 2. will return error)
@@ -372,7 +376,13 @@ def encode_audio(n, payload, cover_object):
     # Convert payload and delimiter to binary
     binary_payload = ''.join(format(ord(char), '08b') for char in payload)
 
-
+    print(len(str(binary_payload))) # Test code
+    print(((len(binary_list)*n))) # Test code
+    if len(str(binary_payload)) > (len(binary_list)*n):  
+        # Check if there is enough space for encoding
+        raise ValueError(
+            "[!] Insufficient bytes, need bigger image or less data")
+    
     # Check if padding is needed
     if len(binary_payload) % n != 0:
         # Calculate the number of padding bits needed
